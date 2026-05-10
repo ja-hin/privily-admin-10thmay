@@ -4,10 +4,7 @@ import AdminLayout from "@/components/AdminLayout";
 import StatusBadge from "@/components/StatusBadge";
 import { api } from "@/lib/api";
 
-const PORTAL_BASE =
-  typeof window !== "undefined"
-    ? `${window.location.origin}/pod`
-    : "http://localhost:3000/pod";
+const PORTAL_BASE = process.env.NEXT_PUBLIC_POD_BASE_URL || "http://localhost:3000/pod";
 
 interface Pod {
   _id: string;
