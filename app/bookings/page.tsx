@@ -4,6 +4,7 @@ import AdminLayout from "@/components/AdminLayout";
 import StatusBadge from "@/components/StatusBadge";
 import Pagination from "@/components/Pagination";
 import { api } from "@/lib/api";
+import { downloadCSV } from "@/lib/exportCsv";
 
 interface Location { _id: string; name: string; city: string }
 
@@ -78,6 +79,7 @@ export default function BookingsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"details" | "transaction" | "ratings">("details");
   const [updating, setUpdating] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api.get<Location[]>("/admin/locations").then(setLocations).catch(console.error);
@@ -133,6 +135,38 @@ export default function BookingsPage() {
     } catch (e) { console.error(e); }
   }
 
+  async function exportCSV() {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        page: "1", limit: "10000",
+        ...(status !== "all" && { status }),
+        ...(appliedSearch && { search: appliedSearch }),
+        ...(locationId !== "all" && { locationId }),
+        ...(startDate && { startDate }),
+        ...(endDate && { endDate }),
+      });
+      const res = await api.get<PaginatedResponse>(`/admin/bookings?${params}`);
+      const rows = res.data.map((bk) => ({
+        "Booking ID": bk._id,
+        "Pod": bk.podTitle,
+        "User Name": bk.user ? `${bk.user.firstname} ${bk.user.lastname}` : "—",
+        "User Email": bk.user?.email || "—",
+        "User Phone": bk.user?.phoneNumber || "—",
+        "Status": bk.status,
+        "Booking Date": fmt(bk.bookingDate),
+        "Start Time": fmtTime(bk.startTime),
+        "End Time": fmtTime(bk.endTime),
+        "Purpose": bk.bookingPurpose || "—",
+        "Created At": fmt(bk.createdAt),
+        "Transaction Amount": bk.transaction ? `${bk.transaction.currency} ${(bk.transaction.amount / 100).toFixed(2)}` : "—",
+        "Transaction Status": bk.transaction?.status || "—",
+      }));
+      downloadCSV(`bookings-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    } catch (e) { console.error(e); }
+    finally { setExporting(false); }
+  }
+
   const b = selected?.booking;
   const txn = selected?.transaction;
   const ratings = b?.podId?.ratings || [];
@@ -140,9 +174,19 @@ export default function BookingsPage() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Bookings</h2>
-          <p className="text-gray-500 text-sm mt-1">{pagination.total} total bookings</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Bookings</h2>
+            <p className="text-gray-500 text-sm mt-1">{pagination.total} total bookings</p>
+          </div>
+          <button
+            type="button"
+            onClick={exportCSV}
+            disabled={exporting}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {exporting ? "Exporting…" : "⬇ Export CSV"}
+          </button>
         </div>
 
         {/* Filters */}
@@ -249,9 +293,11 @@ export default function BookingsPage() {
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={bk.status} /></td>
                     <td className="px-4 py-3">
-                      <button type="button" onClick={() => openDetail(bk._id)}
-                        className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold">
-                        View →
+                      <button type="button" onClick={() => openDetail(bk._id)} title="View"
+                        className="p-1.5 rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                        </svg>
                       </button>
                     </td>
                   </tr>

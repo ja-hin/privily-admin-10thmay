@@ -19,7 +19,7 @@ export default function CategoriesPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.get<Category[]>("/category/getallcategory")
+    api.get<Category[]>("/category")
       .then(setCategories)
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -31,8 +31,8 @@ export default function CategoriesPage() {
     setActioning(true);
     setError("");
     try {
-      await api.post("/category/", { title: newTitle });
-      const updated = await api.get<Category[]>("/category/getallcategory");
+      await api.post("/category/create", { title: newTitle });
+      const updated = await api.get<Category[]>("/category");
       setCategories(updated);
       setNewTitle("");
     } catch (e: unknown) {

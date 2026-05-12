@@ -20,7 +20,7 @@ export default function FeaturesPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.get<Feature[]>("/location/getallfeatures")
+    api.get<Feature[]>("/location/features")
       .then((data) => setFeatures(data.sort((a, b) => a.order - b.order)))
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -33,7 +33,7 @@ export default function FeaturesPage() {
     setError("");
     try {
       await api.post("/location/create-features", form);
-      const updated = await api.get<Feature[]>("/location/getallfeatures");
+      const updated = await api.get<Feature[]>("/location/features");
       setFeatures(updated.sort((a, b) => a.order - b.order));
       setForm({ name: "", icon: "", order: 0 });
     } catch (e: unknown) {

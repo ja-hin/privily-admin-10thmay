@@ -4,6 +4,7 @@ import AdminLayout from "@/components/AdminLayout";
 import StatusBadge from "@/components/StatusBadge";
 import Pagination from "@/components/Pagination";
 import { api } from "@/lib/api";
+import { downloadCSV } from "@/lib/exportCsv";
 
 interface Transaction {
   _id: string;
@@ -27,6 +28,7 @@ export default function TransactionsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const fetchTransactions = useCallback(async (page = 1) => {
     setLoading(true);
@@ -54,6 +56,28 @@ export default function TransactionsPage() {
 
   useEffect(() => { fetchTransactions(1); }, [fetchTransactions]);
 
+  async function exportCSV() {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        page: "1", limit: "10000",
+        ...(statusFilter !== "all" && { status: statusFilter }),
+      });
+      const res = await api.get<PaginatedResponse>(`/admin/transactions?${params}`);
+      const rows = res.data.map((t) => ({
+        "Transaction ID": t._id,
+        "Amount": `${t.currency} ${(t.amount / 100).toFixed(2)}`,
+        "Facilitator": t.paymentFacilitator,
+        "Merchant ID": t.merchantId,
+        "Checkout ID": t.checkoutId,
+        "Status": t.status,
+        "Date": new Date(t.createdAt).toLocaleDateString("en-ZA"),
+      }));
+      downloadCSV(`transactions-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    } catch (e) { console.error(e); }
+    finally { setExporting(false); }
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -62,15 +86,26 @@ export default function TransactionsPage() {
             <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
             <p className="text-gray-500 text-sm mt-1">{pagination.total} total transactions</p>
           </div>
-          <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-3">
-            <p className="text-xs text-green-600 font-medium">Revenue (current page)</p>
-            <p className="text-xl font-bold text-green-700">R {(totalRevenue / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</p>
+          <div className="flex items-center gap-3">
+            <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-3">
+              <p className="text-xs text-green-600 font-medium">Revenue (current page)</p>
+              <p className="text-xl font-bold text-green-700">R {(totalRevenue / 100).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</p>
+            </div>
+            <button
+              type="button"
+              onClick={exportCSV}
+              disabled={exporting}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              {exporting ? "Exporting…" : "⬇ Export CSV"}
+            </button>
           </div>
         </div>
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex gap-3">
           <select
+            title="Filter by status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
