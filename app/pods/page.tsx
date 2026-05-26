@@ -11,7 +11,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 interface Pod {
   _id: string; title: string; rate: number; description: string;
   isBlocked: boolean; isAvailable: boolean; totalRating: number;
-  deviceId: string; serial: string; UserId: string; email: string;
+  deviceId: string; serial: string; UserId: string; email: string; password?: string;
   timeSlot: string; availability: string; booking_requirements?: string;
   cancellation_policy?: string; safety_and_property?: string; direction?: string;
   location?: { _id: string; name: string; city: string };
@@ -56,9 +56,10 @@ export default function PodsPage() {
   // Edit
   const [editPod, setEditPod] = useState<Pod | null>(null);
   const [editForm, setEditForm] = useState({
-    title: "", description: "", rate: "", timeSlot: "",
-    availability: "", booking_requirements: "", cancellation_policy: "",
-    safety_and_property: "", direction: "",
+    UserId: "", deviceId: "", serial: "", password: "",
+    title: "", description: "", locationId: "", featureId: "",
+    rate: "", timeSlot: "", availability: "", booking_requirements: "",
+    cancellation_policy: "", safety_and_property: "", direction: "", email: "",
   });
   const [editImages, setEditImages] = useState<{ url: string; public_id: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -126,12 +127,16 @@ export default function PodsPage() {
     setEditPod(pod);
     setEditImages(pod.images || []);
     setEditForm({
-      title: pod.title, description: pod.description, rate: String(pod.rate),
-      timeSlot: pod.timeSlot, availability: pod.availability,
+      UserId: pod.UserId || "", deviceId: pod.deviceId || "",
+      serial: pod.serial || "", password: pod.password || "",
+      title: pod.title, description: pod.description,
+      locationId: pod.location?._id || "", featureId: pod.features?.[0]?._id || "",
+      rate: String(pod.rate), timeSlot: pod.timeSlot || "",
+      availability: pod.availability || "",
       booking_requirements: pod.booking_requirements || "",
       cancellation_policy: pod.cancellation_policy || "",
       safety_and_property: pod.safety_and_property || "N/A",
-      direction: pod.direction || "",
+      direction: pod.direction || "", email: pod.email || "",
     });
   }
 
@@ -140,17 +145,23 @@ export default function PodsPage() {
     setSaving(true);
     try {
       const body = {
+        UserId: editForm.UserId, deviceId: editForm.deviceId,
+        serial: editForm.serial, email: editForm.email,
+        password: editForm.password,
         title: editForm.title, description: editForm.description,
         rate: parseFloat(editForm.rate), timeSlot: editForm.timeSlot,
         availability: editForm.availability,
         booking_requirements: editForm.booking_requirements,
         cancellation_policy: editForm.cancellation_policy,
         safety_and_property: editForm.safety_and_property,
-        direction: editForm.direction, images: editImages,
+        direction: editForm.direction,
+        location: editForm.locationId,
+        features: editForm.featureId ? [editForm.featureId] : [],
+        images: editImages,
       };
       await api.put<Pod>(`/product/${editPod._id}`, body);
-      setPods((prev) => prev.map((p) => p._id === editPod._id ? { ...p, ...body } : p));
-      if (selected?._id === editPod._id) setSelected((p) => p ? { ...p, ...body } : null);
+      setPods((prev) => prev.map((p) => p._id === editPod._id ? { ...p, ...body as unknown as Pod } : p));
+      if (selected?._id === editPod._id) setSelected((p) => p ? { ...p, ...body as unknown as Pod } : null);
       setEditPod(null);
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -401,57 +412,116 @@ export default function PodsPage() {
       {/* ── Edit Modal ── */}
       {editPod && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Edit Pod</h3>
               <button type="button" onClick={() => setEditPod(null)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
             </div>
             <div className="p-6 space-y-4">
-              <Field label="Title"><input type="text" title="Title" placeholder="Pod title" value={editForm.title} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} className={inputCls} /></Field>
-              <Field label="Rate (R/hr)"><input type="number" min="0" step="0.01" title="Rate" placeholder="e.g. 50" value={editForm.rate} onChange={(e) => setEditForm((f) => ({ ...f, rate: e.target.value }))} className={inputCls} /></Field>
+              {/* Row 1: User ID, Device ID, Device Serial */}
+              <div className="grid grid-cols-3 gap-3">
+                <input type="text" title="User ID" placeholder="User ID *" value={editForm.UserId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, UserId: e.target.value }))} className={inputCls} />
+                <input type="text" title="Device ID" placeholder="Device ID *" value={editForm.deviceId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, deviceId: e.target.value }))} className={inputCls} />
+                <input type="text" title="Device Serial" placeholder="Device Serial *" value={editForm.serial}
+                  onChange={(e) => setEditForm((f) => ({ ...f, serial: e.target.value }))} className={inputCls} />
+              </div>
+
+              {/* Row 2: Device Password, Title, Description */}
+              <div className="grid grid-cols-3 gap-3">
+                <input type="password" title="Device Password" placeholder="Device Password (leave blank to keep)" value={editForm.password}
+                  onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))} className={inputCls} />
+                <input type="text" title="Title" placeholder="Title *" value={editForm.title}
+                  onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} className={inputCls} />
+                <input type="text" title="Description" placeholder="Description *" value={editForm.description}
+                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} className={inputCls} />
+              </div>
+
+              {/* Row 3: Select Location, Select Features */}
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Time Slot"><input type="text" title="Time slot" placeholder="e.g. 1 hour" value={editForm.timeSlot} onChange={(e) => setEditForm((f) => ({ ...f, timeSlot: e.target.value }))} className={inputCls} /></Field>
-                <Field label="Availability"><input type="text" title="Availability" placeholder="e.g. Mon–Fri" value={editForm.availability} onChange={(e) => setEditForm((f) => ({ ...f, availability: e.target.value }))} className={inputCls} /></Field>
+                <select title="Select Location" value={editForm.locationId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, locationId: e.target.value }))}
+                  className={`${inputCls} text-gray-700`}>
+                  <option value="">Select Location</option>
+                  {locations.map((l) => <option key={l._id} value={l._id}>{l.name} — {l.city}</option>)}
+                </select>
+                <select title="Select Features" value={editForm.featureId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, featureId: e.target.value }))}
+                  className={`${inputCls} text-gray-700`}>
+                  <option value="">Select Features</option>
+                  {allFeatures.map((f) => <option key={f._id} value={f._id}>{f.icon} {f.name}</option>)}
+                </select>
               </div>
-              <Field label="Description"><textarea rows={3} title="Description" placeholder="Pod description" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} className={taCls} /></Field>
-              <Field label="Booking Requirements"><textarea rows={2} title="Booking requirements" value={editForm.booking_requirements} onChange={(e) => setEditForm((f) => ({ ...f, booking_requirements: e.target.value }))} className={taCls} /></Field>
-              <Field label="Cancellation Policy"><textarea rows={2} title="Cancellation policy" value={editForm.cancellation_policy} onChange={(e) => setEditForm((f) => ({ ...f, cancellation_policy: e.target.value }))} className={taCls} /></Field>
-              <Field label="Safety & Property"><textarea rows={2} title="Safety and property" value={editForm.safety_and_property} onChange={(e) => setEditForm((f) => ({ ...f, safety_and_property: e.target.value }))} className={taCls} /></Field>
-              <Field label="Direction URL"><input type="text" title="Direction URL" placeholder="https://maps.google.com/..." value={editForm.direction} onChange={(e) => setEditForm((f) => ({ ...f, direction: e.target.value }))} className={inputCls} /></Field>
 
-              {/* Images */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Images</label>
-                {editImages.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {editImages.map((img, i) => (
-                      <div key={i} className="relative group">
-                        <img src={img.url} alt="" className="w-20 h-20 object-cover rounded-lg border border-gray-200" />
-                        <button type="button"
-                          onClick={() => setEditImages((imgs) => imgs.filter((_, idx) => idx !== i))}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+              {/* Row 4: Images, Rate Per Min */}
+              <div className="grid grid-cols-2 gap-3 items-start">
+                <div>
+                  <input ref={editImgRef} type="file" accept="image/*" multiple title="Upload images" className="hidden"
+                    onChange={async (e) => {
+                      if (!e.target.files?.length) return;
+                      const uploaded = await uploadImages(e.target.files);
+                      setEditImages((imgs) => [...imgs, ...uploaded]);
+                      e.target.value = "";
+                    }} />
+                  {editImages.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {editImages.map((img, i) => (
+                          <div key={i} className="relative group">
+                            <img src={img.url} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                            <button type="button" onClick={() => setEditImages((imgs) => imgs.filter((_, idx) => idx !== i))}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-                <input ref={editImgRef} type="file" accept="image/*" multiple title="Upload images" className="hidden"
-                  onChange={async (e) => {
-                    if (!e.target.files?.length) return;
-                    const uploaded = await uploadImages(e.target.files);
-                    setEditImages((imgs) => [...imgs, ...uploaded]);
-                    e.target.value = "";
-                  }} />
-                <button type="button" onClick={() => editImgRef.current?.click()} disabled={uploading}
-                  className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 hover:border-indigo-400 text-gray-500 hover:text-indigo-600 rounded-xl text-sm transition-colors w-full justify-center disabled:opacity-50">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                  {uploading ? "Uploading…" : "Upload Images"}
-                </button>
+                      <button type="button" onClick={() => editImgRef.current?.click()} disabled={uploading}
+                        className="text-xs text-indigo-600 hover:underline disabled:opacity-50">
+                        {uploading ? "Uploading…" : "+ Add more"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => editImgRef.current?.click()} disabled={uploading}
+                      className={`${inputCls} flex items-center gap-2 text-gray-400 cursor-pointer hover:border-indigo-400 hover:text-indigo-500 transition-colors disabled:opacity-50`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                      {uploading ? "Uploading…" : "Choose files"}
+                    </button>
+                  )}
+                </div>
+                <input type="number" min="0" step="0.01" title="Rate Per Min" placeholder="Rate Per Min *" value={editForm.rate}
+                  onChange={(e) => setEditForm((f) => ({ ...f, rate: e.target.value }))} className={inputCls} />
               </div>
 
-              <div className="flex gap-3 pt-2">
+              {/* Row 5: Booking Requirements, Google Maps Link */}
+              <div className="grid grid-cols-2 gap-3">
+                <input type="text" title="Booking Requirements" placeholder="Booking Requirements" value={editForm.booking_requirements}
+                  onChange={(e) => setEditForm((f) => ({ ...f, booking_requirements: e.target.value }))} className={inputCls} />
+                <input type="text" title="Google Maps Link" placeholder="Google Maps Link" value={editForm.direction}
+                  onChange={(e) => setEditForm((f) => ({ ...f, direction: e.target.value }))} className={inputCls} />
+              </div>
+
+              {/* Row 6: Availability, Time Slot, Cancellation Policy */}
+              <div className="grid grid-cols-3 gap-3">
+                <input type="text" title="Availability" placeholder="Availability" value={editForm.availability}
+                  onChange={(e) => setEditForm((f) => ({ ...f, availability: e.target.value }))} className={inputCls} />
+                <input type="text" title="Time Slot" placeholder="Time Slot (e.g. 1 hour)" value={editForm.timeSlot}
+                  onChange={(e) => setEditForm((f) => ({ ...f, timeSlot: e.target.value }))} className={inputCls} />
+                <input type="text" title="Cancellation Policy" placeholder="Cancellation Policy" value={editForm.cancellation_policy}
+                  onChange={(e) => setEditForm((f) => ({ ...f, cancellation_policy: e.target.value }))} className={inputCls} />
+              </div>
+
+              {/* Row 7: Safety and Property, Host email */}
+              <div className="grid grid-cols-2 gap-3">
+                <input type="text" title="Safety and Property" placeholder="Safety and Property" value={editForm.safety_and_property}
+                  onChange={(e) => setEditForm((f) => ({ ...f, safety_and_property: e.target.value }))} className={inputCls} />
+                <input type="email" title="Host email" placeholder="Host email" value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} className={inputCls} />
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onClick={() => setEditPod(null)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
                 <button type="button" onClick={saveEdit} disabled={saving || uploading}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 uppercase tracking-wide">
                   {saving ? "Saving…" : "Save Changes"}
                 </button>
               </div>

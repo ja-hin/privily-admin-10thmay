@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh root@privily.co \"pm2 logs privily-test --lines 30 --err --nostream 2>&1\")",
+      "Bash(ssh -o StrictHostKeyChecking=no dimple@privily.co \"pm2 logs privily-test --lines 30 --err --nostream 2>&1\")"
+    ]
+  }
+}

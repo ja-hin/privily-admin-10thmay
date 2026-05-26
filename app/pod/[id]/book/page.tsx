@@ -1,11 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Script from "next/script";
 
 /* ─── constants ─────────────────────────────────────────── */
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
-const YOCO_PUBLIC_KEY = process.env.NEXT_PUBLIC_YOCO_PUBLIC_KEY || "";
 const START_HOUR = 6;
 const END_HOUR   = 24;
 const ITEM_H     = 56;
@@ -568,7 +566,6 @@ export default function BookPage() {
   const [desc,      setDesc]      = useState("");
   const [paying,    setPaying]    = useState(false);
   const [error,     setError]     = useState("");
-  const [success,   setSuccess]   = useState(false);
 
   useEffect(() => {
     if (!podId) return;
@@ -617,96 +614,56 @@ export default function BookPage() {
       if (!authRes.ok) throw new Error(authData.message || "Authentication failed");
       const token = authData.token;
 
-      // Step 2: open Yoco popup
+      // Step 2: calculate amount and store booking details for after redirect
       const minutes       = billableMinutes(date, startSlot, endSlot);
       const total         = minutes * pod.rate;
       const amountInCents = Math.round(total * 100);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const YocoSDK = (window as any).YocoSDK;
-      if (!YocoSDK) {
-        setError("Payment SDK not loaded. Please refresh and try again.");
-        setPaying(false);
-        return;
-      }
+      const startTime = new Date(date);
+      startTime.setHours(startSlot.hour, startSlot.minute, 0, 0);
+      const endTime = new Date(date);
+      endTime.setHours(endSlot.hour, endSlot.minute, 0, 0);
 
-      const yoco = new YocoSDK({ publicKey: YOCO_PUBLIC_KEY });
-
-      yoco.showPopup({
-        amountInCents,
-        currency: "ZAR",
-        name: "Privily Pod Booking",
-        description: pod.title,
-        callback: async (result: { error?: { message: string }; id?: string }) => {
-          if (result.error) {
-            setError(result.error.message || "Payment failed. Please try again.");
-            setPaying(false);
-            return;
-          }
-
-          // Step 3: create booking
-          try {
-            const startTime = new Date(date);
-            startTime.setHours(startSlot.hour, startSlot.minute, 0, 0);
-            const endTime = new Date(date);
-            endTime.setHours(endSlot.hour, endSlot.minute, 0, 0);
-
-            const res = await fetch(`${BASE_URL}/user/create-booking/${podId}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify({
-                bookingDate: date.toISOString(),
-                startTime: startTime.toISOString(),
-                endTime: endTime.toISOString(),
-                timeSlotNumber: String(startSlot.index),
-                bookingPurpose: purpose,
-                shortDescription: desc,
-                status: "Pending",
-                yocoToken: result.id,
-                amountInCents,
-              }),
-            });
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || "Booking failed");
-            setSuccess(true);
-          } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : "Something went wrong");
-          } finally {
-            setPaying(false);
-          }
-        },
+      // Step 3: create Yoco checkout on the backend
+      const origin = window.location.origin;
+      const checkoutRes = await fetch(`${BASE_URL}/user/yoco-checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          amountInCents,
+          successUrl: `${origin}/pod/${podId}/book/success`,
+          cancelUrl: `${origin}/pod/${podId}/book`,
+        }),
       });
+      const checkoutData = await checkoutRes.json();
+      if (!checkoutRes.ok) throw new Error(checkoutData.message || "Checkout creation failed");
+
+      // Store booking + Yoco checkout data for the success page
+      sessionStorage.setItem("pendingBooking", JSON.stringify({
+        podId,
+        token,
+        bookingDate: date.toISOString(),
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        timeSlotNumber: String(startSlot.index),
+        bookingPurpose: purpose,
+        shortDescription: desc,
+        amountInCents,
+        yocoCheckoutId: checkoutData.id,
+        yocoMerchantId: checkoutData.merchantId || "",
+        yocoPaymentFacilitator: checkoutData.metadata?.paymentFacilitator || "yoco-online-checkout",
+      }));
+
+      // Step 4: redirect to Yoco hosted checkout
+      window.location.href = checkoutData.redirectUrl;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setPaying(false);
     }
   }
 
-  /* ── success screen ─── */
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center space-y-5">
-        <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl text-white bg-gradient-to-br from-orange-400 to-purple-500">
-          ✓
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900">Booking Confirmed!</h2>
-        <p className="text-gray-500 text-sm">Payment successful. Check your email for details.</p>
-        <button
-          type="button"
-          onClick={() => router.push(`/pod/${podId}`)}
-          className="px-6 py-3 rounded-2xl text-white font-semibold text-sm bg-gradient-to-r from-orange-400 to-purple-500"
-        >
-          Back to Pod
-        </button>
-      </div>
-    );
-  }
-
   return (
     <>
-      {/* Yoco SDK */}
-      <Script src="https://js.yoco.com/sdk/v1/yoco-sdk-web.js" strategy="lazyOnload" />
 
       {/* Global error toast */}
       {error && (

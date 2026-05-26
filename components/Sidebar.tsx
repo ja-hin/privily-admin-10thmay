@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getUser } from "@/lib/api";
 
@@ -29,7 +30,8 @@ function NavIcon({ d }: { d: string }) {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const user = getUser();
+  const [user, setUser] = useState<ReturnType<typeof getUser>>(null);
+  useEffect(() => { setUser(getUser()); }, []);
 
   function handleLogout() {
     clearAuth();

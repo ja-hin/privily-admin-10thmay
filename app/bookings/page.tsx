@@ -135,6 +135,20 @@ export default function BookingsPage() {
     } catch (e) { console.error(e); }
   }
 
+  async function cancelAndRefund(bookingId: string, checkoutId: string) {
+    if (!confirm("Cancel this booking and issue a full refund to the customer?")) return;
+    setUpdating(true);
+    try {
+      await api.post(`/user/refund-booking/${bookingId}`, { checkoutId });
+      fetchBookings(pagination.page);
+      setSelected(null);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Refund failed");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   async function exportCSV() {
     setExporting(true);
     try {
@@ -458,6 +472,14 @@ export default function BookingsPage() {
                             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40">
                             Cancel Booking
                           </button>
+                          {txn && b.status !== "Cancelled" && (
+                            <button type="button"
+                              onClick={() => cancelAndRefund(b._id, txn.checkoutId)}
+                              disabled={updating}
+                              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-40">
+                              Cancel &amp; Refund
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
