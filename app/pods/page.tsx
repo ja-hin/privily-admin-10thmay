@@ -7,6 +7,12 @@ import { downloadCSV } from "@/lib/exportCsv";
 
 const PORTAL_BASE = process.env.NEXT_PUBLIC_POD_BASE_URL || "http://localhost:3000/pod";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+const IMG_DOMAIN = BASE_URL.replace(/\/api$/, "");
+
+function imgUrl(url: string | undefined): string {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${IMG_DOMAIN}${url}`;
+}
 
 interface Pod {
   _id: string; title: string; rate: number; description: string;
@@ -79,8 +85,12 @@ export default function PodsPage() {
   const createImgRef = useRef<HTMLInputElement>(null);
   const editImgRef = useRef<HTMLInputElement>(null);
 
+  function fetchPods() {
+    return api.get<Pod[]>("/product/getall").then(setPods).catch(console.error);
+  }
+
   useEffect(() => {
-    api.get<Pod[]>("/product/getall").then(setPods).catch(console.error).finally(() => setLoading(false));
+    fetchPods().finally(() => setLoading(false));
     api.get<Location[]>("/admin/locations").then(setLocations).catch(console.error);
     api.get<Category[]>("/category").then(setCategories).catch(console.error);
     api.get<Feature[]>("/location/features").then(setAllFeatures).catch(console.error);
@@ -160,8 +170,8 @@ export default function PodsPage() {
         images: editImages,
       };
       await api.put<Pod>(`/product/${editPod._id}`, body);
-      setPods((prev) => prev.map((p) => p._id === editPod._id ? { ...p, ...body as unknown as Pod } : p));
-      if (selected?._id === editPod._id) setSelected((p) => p ? { ...p, ...body as unknown as Pod } : null);
+      await fetchPods();
+      if (selected?._id === editPod._id) setSelected(null);
       setEditPod(null);
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -362,7 +372,7 @@ export default function PodsPage() {
             {selected.images && selected.images.length > 0 && (
               <div className="flex gap-2 p-4 overflow-x-auto bg-gray-50">
                 {selected.images.map((img, i) => (
-                  <img key={i} src={img.url} alt={`${selected.title} ${i + 1}`}
+                  <img key={i} src={imgUrl(img.url)} alt={`${selected.title} ${i + 1}`}
                     className="h-40 w-auto rounded-lg object-cover shrink-0" />
                 ))}
               </div>
@@ -469,7 +479,7 @@ export default function PodsPage() {
                       <div className="flex flex-wrap gap-2">
                         {editImages.map((img, i) => (
                           <div key={i} className="relative group">
-                            <img src={img.url} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                            <img src={imgUrl(img.url)} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
                             <button type="button" onClick={() => setEditImages((imgs) => imgs.filter((_, idx) => idx !== i))}
                               className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                           </div>
@@ -598,7 +608,7 @@ export default function PodsPage() {
                       <div className="flex flex-wrap gap-2">
                         {createImages.map((img, i) => (
                           <div key={i} className="relative group">
-                            <img src={img.url} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                            <img src={imgUrl(img.url)} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
                             <button type="button" onClick={() => setCreateImages((imgs) => imgs.filter((_, idx) => idx !== i))}
                               className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                           </div>
