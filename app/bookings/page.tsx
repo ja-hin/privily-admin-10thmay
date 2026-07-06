@@ -171,6 +171,7 @@ export default function BookingsPage() {
         "Booking Date": fmt(bk.bookingDate),
         "Start Time": fmtTime(bk.startTime),
         "End Time": fmtTime(bk.endTime),
+        "Duration (mins)": bk.startTime && bk.endTime ? String(Math.round((new Date(bk.endTime).getTime() - new Date(bk.startTime).getTime()) / 60000)) : "—",
         "Purpose": bk.bookingPurpose || "—",
         "Created At": fmt(bk.createdAt),
         "Transaction Amount": bk.transaction ? `${bk.transaction.currency} ${(bk.transaction.amount / 100).toFixed(2)}` : "—",
@@ -272,6 +273,7 @@ export default function BookingsPage() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">User</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Location</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Date &amp; Time</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Duration</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Transaction</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Action</th>
@@ -279,9 +281,9 @@ export default function BookingsPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading ? (
-                  <tr><td colSpan={8} className="px-6 py-10 text-center text-gray-400">Loading bookings…</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-10 text-center text-gray-400">Loading bookings…</td></tr>
                 ) : bookings.length === 0 ? (
-                  <tr><td colSpan={8} className="px-6 py-10 text-center text-gray-400">No bookings found</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-10 text-center text-gray-400">No bookings found</td></tr>
                 ) : bookings.map((bk) => (
                   <tr key={bk._id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
@@ -296,6 +298,14 @@ export default function BookingsPage() {
                     <td className="px-4 py-3">
                       <div className="text-gray-900 text-sm">{fmt(bk.bookingDate)}</div>
                       <div className="text-gray-400 text-xs">{fmtTime(bk.startTime)} – {fmtTime(bk.endTime)}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {bk.startTime && bk.endTime ? (() => {
+                        const mins = Math.round((new Date(bk.endTime).getTime() - new Date(bk.startTime).getTime()) / 60000);
+                        return mins >= 60
+                          ? <span className="text-sm text-gray-700">{Math.floor(mins / 60)}h {mins % 60 > 0 ? `${mins % 60}m` : ""}</span>
+                          : <span className="text-sm text-gray-700">{mins}m</span>;
+                      })() : <span className="text-xs text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       {bk.transaction ? (
