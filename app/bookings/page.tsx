@@ -164,6 +164,8 @@ export default function BookingsPage() {
       const rows = res.data.map((bk) => ({
         "Booking ID": bk._id,
         "Pod": bk.podTitle,
+        "Location": bk.podId?.location?.name || "—",
+        "City": bk.podId?.location?.city || "—",
         "User Name": bk.user ? `${bk.user.firstname} ${bk.user.lastname}` : "—",
         "User Email": bk.user?.email || "—",
         "User Phone": bk.user?.phoneNumber || "—",
