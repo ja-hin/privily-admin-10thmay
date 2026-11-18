@@ -12,6 +12,14 @@ const ITEM_H     = 56;
 interface Pod { _id: string; title: string; rate: number; timeSlot: string }
 interface TimeSlot { hour: number; minute: number; index: number }
 interface UserDetails { name: string; email: string; phone: string }
+type GatewayId = "yoco" | "paystack";
+interface GatewayOption { id: GatewayId; label: string }
+interface PaymentConfig { enabledGateways: GatewayId[]; defaultGateway: GatewayId | null; gateways: GatewayOption[] }
+
+const GATEWAY_META: Record<GatewayId, { title: string; blurb: string }> = {
+  yoco:     { title: "Yoco",     blurb: "Card payment via Yoco" },
+  paystack: { title: "Paystack", blurb: "Card, EFT or instant payment via Paystack" },
+};
 
 /* ─── helpers ───────────────────────────────────────────── */
 function makeSlots(): TimeSlot[] {
@@ -459,7 +467,7 @@ function SummaryScreen({
 
 /* ─── User Details Screen ────────────────────────────────── */
 function DetailsScreen({
-  pod, date, startSlot, endSlot, onBack, onPay, paying,
+  pod, date, startSlot, endSlot, onBack, onPay, paying, gateways, gateway, onGatewayChange,
 }: {
   pod: Pod;
   date: Date;
@@ -468,14 +476,18 @@ function DetailsScreen({
   onBack: () => void;
   onPay: (details: UserDetails) => void;
   paying: boolean;
+  gateways: GatewayOption[];
+  gateway: GatewayId | null;
+  onGatewayChange: (g: GatewayId) => void;
 }) {
   const [name,  setName]  = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const gatewayLabel = gateway ? GATEWAY_META[gateway].title : "our payment partner";
 
   const minutes = billableMinutes(date, startSlot, endSlot);
   const total   = minutes * pod.rate;
-  const valid   = name.trim() && email.trim() && phone.trim();
+  const valid   = name.trim() && email.trim() && phone.trim() && !!gateway;
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -526,12 +538,39 @@ function DetailsScreen({
           </div>
         </div>
 
+        {/* Payment method */}
+        {gateways.length > 1 && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase">Pay with</p>
+            {gateways.map((g) => {
+              const active = gateway === g.id;
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => onGatewayChange(g.id)}
+                  className={`w-full flex items-center justify-between px-3 py-3 rounded-xl border text-left transition ${active ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"}`}
+                >
+                  <span>
+                    <span className="block text-sm font-semibold text-gray-900">{GATEWAY_META[g.id]?.title || g.label}</span>
+                    <span className="block text-xs text-gray-500">{GATEWAY_META[g.id]?.blurb || ""}</span>
+                  </span>
+                  <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${active ? "border-indigo-500 bg-indigo-500" : "border-gray-300"}`} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {gateways.length === 0 && (
+          <p className="text-xs text-red-500 px-1">Online payments are temporarily unavailable. Please try again shortly.</p>
+        )}
+
         {/* Secure payment note */}
         <div className="flex items-center gap-2 px-1">
           <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
-          <p className="text-xs text-gray-500">Payments are secure and processed by Yoco</p>
+          <p className="text-xs text-gray-500">Payments are secure and processed by {gatewayLabel}</p>
         </div>
       </div>
 
@@ -558,6 +597,24 @@ export default function BookPage() {
   const podId  = params?.id as string;
 
   const [step,      setStep]      = useState<1 | 2 | 3 | 4>(1);
+  const [gateways,  setGateways]  = useState<GatewayOption[]>([]);
+  const [gateway,   setGateway]   = useState<GatewayId | null>(null);
+
+  // Which gateways the backend currently offers (admin can toggle these).
+  useEffect(() => {
+    fetch(`${BASE_URL}/payments/config`)
+      .then(r => r.json())
+      .then((cfg: PaymentConfig) => {
+        const list = Array.isArray(cfg.gateways) ? cfg.gateways : [];
+        setGateways(list);
+        setGateway(cfg.defaultGateway || list[0]?.id || null);
+      })
+      .catch(() => {
+        // Backend unreachable: fall back to Yoco, the historical default.
+        setGateways([{ id: "yoco", label: "Yoco" }]);
+        setGateway("yoco");
+      });
+  }, []);
   const [pod,       setPod]       = useState<Pod | null>(null);
   const [date,      setDate]      = useState<Date | null>(null);
   const [startSlot, setStartSlot] = useState<TimeSlot | null>(null);
@@ -624,22 +681,12 @@ export default function BookPage() {
       const endTime = new Date(date);
       endTime.setHours(endSlot.hour, endSlot.minute, 0, 0);
 
-      // Step 3: create Yoco checkout on the backend
+      // Step 3: create a hosted checkout on the backend for the chosen gateway
       const origin = window.location.origin;
-      const checkoutRes = await fetch(`${BASE_URL}/user/yoco-checkout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          amountInCents,
-          successUrl: `${origin}/pod/${podId}/book/success`,
-          cancelUrl: `${origin}/pod/${podId}/book`,
-        }),
-      });
-      const checkoutData = await checkoutRes.json();
-      if (!checkoutRes.ok) throw new Error(checkoutData.message || "Checkout creation failed");
+      const chosen: GatewayId = gateway || "yoco";
+      const successUrl = `${origin}/pod/${podId}/book/success?gateway=${chosen}`;
 
-      // Store booking + Yoco checkout data for the success page
-      sessionStorage.setItem("pendingBooking", JSON.stringify({
+      const bookingBase = {
         podId,
         token,
         bookingDate: date.toISOString(),
@@ -649,13 +696,53 @@ export default function BookPage() {
         bookingPurpose: purpose,
         shortDescription: desc,
         amountInCents,
-        yocoCheckoutId: checkoutData.id,
-        yocoMerchantId: checkoutData.merchantId || "",
-        yocoPaymentFacilitator: checkoutData.metadata?.paymentFacilitator || "yoco-online-checkout",
-      }));
+        paymentGateway: chosen,
+      };
 
-      // Step 4: redirect to Yoco hosted checkout
-      window.location.href = checkoutData.redirectUrl;
+      let redirectUrl: string;
+      if (chosen === "paystack") {
+        const checkoutRes = await fetch(`${BASE_URL}/user/paystack-checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            amountInCents,
+            email: details.email,
+            callbackUrl: successUrl,
+            source: "web",
+            metadata: { podId, podTitle: pod.title, source: "web" },
+          }),
+        });
+        const checkoutData = await checkoutRes.json();
+        if (!checkoutRes.ok) throw new Error(checkoutData.message || "Checkout creation failed");
+        sessionStorage.setItem("pendingBooking", JSON.stringify({
+          ...bookingBase,
+          paymentReference: checkoutData.reference,
+        }));
+        redirectUrl = checkoutData.redirectUrl;
+      } else {
+        const checkoutRes = await fetch(`${BASE_URL}/user/yoco-checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            amountInCents,
+            successUrl,
+            cancelUrl: `${origin}/pod/${podId}/book`,
+          }),
+        });
+        const checkoutData = await checkoutRes.json();
+        if (!checkoutRes.ok) throw new Error(checkoutData.message || "Checkout creation failed");
+        sessionStorage.setItem("pendingBooking", JSON.stringify({
+          ...bookingBase,
+          paymentReference: checkoutData.id,
+          yocoCheckoutId: checkoutData.id,
+          yocoMerchantId: checkoutData.merchantId || "",
+          yocoPaymentFacilitator: checkoutData.metadata?.paymentFacilitator || "yoco-online-checkout",
+        }));
+        redirectUrl = checkoutData.redirectUrl;
+      }
+
+      // Step 4: redirect to the hosted checkout
+      window.location.href = redirectUrl;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setPaying(false);
@@ -704,6 +791,9 @@ export default function BookPage() {
           onBack={() => setStep(3)}
           onPay={handlePay}
           paying={paying}
+          gateways={gateways}
+          gateway={gateway}
+          onGatewayChange={setGateway}
         />
       )}
 

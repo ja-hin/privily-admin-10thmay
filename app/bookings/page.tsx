@@ -12,7 +12,14 @@ interface Transaction {
   _id: string; amount: number; currency: string;
   merchantId: string; checkoutId: string;
   paymentFacilitator: string; status: string; createdAt: string;
+  gateway?: "yoco" | "paystack"; reference?: string | null;
+  customerEmail?: string | null; refundedAt?: string | null; channel?: string | null;
 }
+
+const GATEWAY_LABEL: Record<string, string> = { yoco: "Yoco", paystack: "Paystack" };
+const txnGateway = (t?: Transaction | null) => (t?.gateway || "yoco");
+const txnReference = (t?: Transaction | null) => (t?.reference || t?.checkoutId || "");
+const isPaid = (s?: string) => !!s && ["successful", "success", "SUCCESSFUL"].includes(s);
 
 interface Booking {
   _id: string; podTitle: string; status: string;
@@ -135,11 +142,16 @@ export default function BookingsPage() {
     } catch (e) { console.error(e); }
   }
 
-  async function cancelAndRefund(bookingId: string, checkoutId: string) {
-    if (!confirm("Cancel this booking and issue a full refund to the customer?")) return;
+  async function cancelAndRefund(bookingId: string, t: Transaction) {
+    const label = GATEWAY_LABEL[txnGateway(t)] || "the payment gateway";
+    if (!confirm(`Cancel this booking and issue a full refund of ${t.currency} ${(t.amount / 100).toFixed(2)} via ${label}?`)) return;
     setUpdating(true);
     try {
-      await api.post(`/user/refund-booking/${bookingId}`, { checkoutId });
+      await api.post(`/user/refund-booking/${bookingId}`, {
+        gateway: txnGateway(t),
+        reference: txnReference(t),
+        checkoutId: txnReference(t),
+      });
       fetchBookings(pagination.page);
       setSelected(null);
     } catch (e: unknown) {
@@ -484,9 +496,9 @@ export default function BookingsPage() {
                             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40">
                             Cancel Booking
                           </button>
-                          {txn && b.status !== "Cancelled" && (
+                          {txn && b.status !== "Cancelled" && isPaid(txn.status) && (
                             <button type="button"
-                              onClick={() => cancelAndRefund(b._id, txn.checkoutId)}
+                              onClick={() => cancelAndRefund(b._id, txn)}
                               disabled={updating}
                               className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-40">
                               Cancel &amp; Refund
@@ -508,12 +520,16 @@ export default function BookingsPage() {
                         </div>
                       ) : (
                         <div className="space-y-5">
-                          <div className={`p-4 rounded-xl flex items-center justify-between ${txn.status === "successful" || txn.status === "success" ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
+                          <div className={`p-4 rounded-xl flex items-center justify-between ${isPaid(txn.status) ? "bg-green-50 border border-green-200" : txn.status === "refunded" ? "bg-blue-50 border border-blue-200" : "bg-red-50 border border-red-200"}`}>
                             <div>
-                              <p className="text-xs font-medium text-gray-500 uppercase">Amount Paid</p>
+                              <p className="text-xs font-medium text-gray-500 uppercase">{txn.status === "refunded" ? "Amount Refunded" : "Amount Paid"}</p>
                               <p className="text-2xl font-bold text-gray-900 mt-0.5">{txn.currency} {(txn.amount / 100).toFixed(2)}</p>
+                              {txn.refundedAt && <p className="text-xs text-gray-500 mt-0.5">Refunded {fmtFull(txn.refundedAt)}</p>}
                             </div>
-                            <StatusBadge status={txn.status} />
+                            <div className="flex flex-col items-end gap-1.5">
+                              <StatusBadge status={txn.status} />
+                              <StatusBadge status={txnGateway(txn)} />
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -529,22 +545,29 @@ export default function BookingsPage() {
                               <p className="font-medium mt-0.5">{fmtFull(txn.createdAt)}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-gray-400 uppercase font-medium">Checkout ID</p>
+                              <p className="text-xs text-gray-400 uppercase font-medium">{txnGateway(txn) === "paystack" ? "Paystack Reference" : "Yoco Checkout ID"}</p>
                               <div className="flex items-center mt-0.5">
-                                <span className="font-mono text-xs text-gray-700 break-all">{txn.checkoutId}</span>
-                                <CopyBtn value={txn.checkoutId} />
+                                <span className="font-mono text-xs text-gray-700 break-all">{txnReference(txn) || "—"}</span>
+                                {txnReference(txn) && <CopyBtn value={txnReference(txn)} />}
                               </div>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-400 uppercase font-medium">Merchant ID</p>
-                              <div className="flex items-center mt-0.5">
-                                <span className="font-mono text-xs text-gray-700">{txn.merchantId}</span>
-                                <CopyBtn value={txn.merchantId} />
+                            {txnGateway(txn) === "yoco" ? (
+                              <div>
+                                <p className="text-xs text-gray-400 uppercase font-medium">Merchant ID</p>
+                                <div className="flex items-center mt-0.5">
+                                  <span className="font-mono text-xs text-gray-700">{txn.merchantId}</span>
+                                  <CopyBtn value={txn.merchantId} />
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div>
+                                <p className="text-xs text-gray-400 uppercase font-medium">Customer Email</p>
+                                <p className="font-medium mt-0.5 break-all">{txn.customerEmail || "—"}</p>
+                              </div>
+                            )}
                             <div>
-                              <p className="text-xs text-gray-400 uppercase font-medium">Facilitator</p>
-                              <p className="font-medium mt-0.5">{txn.paymentFacilitator}</p>
+                              <p className="text-xs text-gray-400 uppercase font-medium">Gateway</p>
+                              <p className="font-medium mt-0.5">{GATEWAY_LABEL[txnGateway(txn)]}{txn.channel ? ` · ${txn.channel}` : ""}</p>
                             </div>
                             <div>
                               <p className="text-xs text-gray-400 uppercase font-medium">Currency</p>
@@ -555,18 +578,21 @@ export default function BookingsPage() {
                           <div className="border border-orange-200 bg-orange-50 rounded-xl p-4">
                             <p className="text-sm font-semibold text-orange-800 mb-1">🔄 Refund / Dispute</p>
                             <p className="text-xs text-orange-700 leading-relaxed">
-                              To process a refund, use the <strong>Checkout ID</strong> in your Yoco merchant dashboard or contact
-                              Yoco support at <strong>support@yoco.com</strong> with both IDs below.
+                              Use <strong>Cancel &amp; Refund</strong> on the Details tab to refund through {GATEWAY_LABEL[txnGateway(txn)]} automatically.
+                              For disputes, quote the reference below in the {GATEWAY_LABEL[txnGateway(txn)]} dashboard
+                              {txnGateway(txn) === "yoco" ? <> or email <strong>support@yoco.com</strong></> : <> or email <strong>support@paystack.com</strong></>}.
                             </p>
                             <div className="mt-3 flex gap-2">
-                              <button type="button" onClick={() => navigator.clipboard.writeText(txn.checkoutId).catch(() => {})}
+                              <button type="button" onClick={() => navigator.clipboard.writeText(txnReference(txn)).catch(() => {})}
                                 className="text-xs px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
-                                Copy Checkout ID
+                                Copy Reference
                               </button>
-                              <button type="button" onClick={() => navigator.clipboard.writeText(txn.merchantId).catch(() => {})}
-                                className="text-xs px-3 py-1.5 border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-100">
-                                Copy Merchant ID
-                              </button>
+                              {txnGateway(txn) === "yoco" && (
+                                <button type="button" onClick={() => navigator.clipboard.writeText(txn.merchantId).catch(() => {})}
+                                  className="text-xs px-3 py-1.5 border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-100">
+                                  Copy Merchant ID
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>

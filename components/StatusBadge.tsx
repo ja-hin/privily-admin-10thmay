@@ -12,6 +12,9 @@ const styles: Record<string, { bg: string; color: string; dot: string }> = {
   active:      { bg: "#f0fdf4", color: "#14532d", dot: "#22c55e" },
   blocked:     { bg: "#fef2f2", color: "#7f1d1d", dot: "#ef4444" },
   pending:     { bg: "#fffbeb", color: "#92400e", dot: "#f59e0b" },
+  refunded:    { bg: "#eff6ff", color: "#1e40af", dot: "#3b82f6" },
+  yoco:        { bg: "#eef2ff", color: "#3730a3", dot: "#6366f1" },
+  paystack:    { bg: "#ecfeff", color: "#155e75", dot: "#06b6d4" },
 };
 
 const defaultStyle = { bg: "#f8fafc", color: "#475569", dot: "#94a3b8" };

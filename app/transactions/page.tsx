@@ -15,7 +15,14 @@ interface Transaction {
   paymentFacilitator: string;
   status: string;
   createdAt: string;
+  gateway?: "yoco" | "paystack";
+  reference?: string | null;
+  customerEmail?: string | null;
+  refundedAt?: string | null;
 }
+
+const GATEWAY_LABEL: Record<string, string> = { yoco: "Yoco", paystack: "Paystack" };
+const refOf = (t: Transaction) => t.reference || t.checkoutId || "";
 
 interface PaginatedResponse {
   data: Transaction[];
@@ -31,6 +38,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 1 });
   const [statusFilter, setStatusFilter] = useState("all");
+  const [gatewayFilter, setGatewayFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -45,6 +53,7 @@ export default function TransactionsPage() {
       page: String(page),
       limit: String(limit),
       ...(statusFilter !== "all" && { status: statusFilter }),
+      ...(gatewayFilter !== "all" && { gateway: gatewayFilter }),
       ...(appliedSearch && { search: appliedSearch }),
       ...(startDate && { startDate }),
       ...(endDate && { endDate }),
@@ -63,7 +72,7 @@ export default function TransactionsPage() {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, appliedSearch, startDate, endDate]);
+  }, [statusFilter, gatewayFilter, appliedSearch, startDate, endDate]);
 
   const fetchRevenue = useCallback(async () => {
     setRevenueLoading(true);
@@ -79,7 +88,7 @@ export default function TransactionsPage() {
       setRevenueLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, appliedSearch, startDate, endDate]);
+  }, [statusFilter, gatewayFilter, appliedSearch, startDate, endDate]);
 
   useEffect(() => {
     fetchTransactions(1);
@@ -92,6 +101,7 @@ export default function TransactionsPage() {
     setSearch("");
     setAppliedSearch("");
     setStatusFilter("all");
+    setGatewayFilter("all");
     setStartDate("");
     setEndDate("");
   }
@@ -102,7 +112,9 @@ export default function TransactionsPage() {
       const res = await api.get<PaginatedResponse>(`/admin/transactions?${buildParams(1, 10000)}`);
       const rows = res.data.map((t) => ({
         "Transaction ID": t._id,
-        "Checkout ID": t.checkoutId,
+        "Gateway": GATEWAY_LABEL[t.gateway || "yoco"],
+        "Reference": refOf(t),
+        "Customer Email": t.customerEmail || "",
         "Amount": `${t.currency} ${(t.amount / 100).toFixed(2)}`,
         "Currency": t.currency,
         "Facilitator": t.paymentFacilitator,
@@ -151,7 +163,7 @@ export default function TransactionsPage() {
             <div className="flex">
               <input
                 type="text"
-                placeholder="Search checkout ID, transaction ID…"
+                placeholder="Search reference, email, transaction ID…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -177,6 +189,19 @@ export default function TransactionsPage() {
               <option value="successful">Successful</option>
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
+              <option value="refunded">Refunded</option>
+            </select>
+
+            {/* Gateway */}
+            <select
+              title="Filter by gateway"
+              value={gatewayFilter}
+              onChange={(e) => setGatewayFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Gateways</option>
+              <option value="yoco">Yoco</option>
+              <option value="paystack">Paystack</option>
             </select>
 
             {/* Date range */}
@@ -219,9 +244,9 @@ export default function TransactionsPage() {
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">ID</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Amount</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Checkout ID</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Merchant ID</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Facilitator</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Gateway</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Reference</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Customer</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Date</th>
                 </tr>
@@ -237,9 +262,9 @@ export default function TransactionsPage() {
                     <td className="px-4 py-3 font-semibold text-gray-900">
                       {t.currency} {(t.amount / 100).toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{t.checkoutId?.slice(-12) || "—"}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{t.merchantId?.slice(-10) || "—"}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">{t.paymentFacilitator || "—"}</td>
+                    <td className="px-4 py-3"><StatusBadge status={t.gateway || "yoco"} /></td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500" title={refOf(t)}>{refOf(t) ? refOf(t).slice(-14) : "—"}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">{t.customerEmail || "—"}</td>
                     <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmt(t.createdAt)}</td>
                   </tr>
