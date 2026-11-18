@@ -112,7 +112,7 @@ export default function PricingPage() {
                 <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-xl">🏷️</div>
                 <div>
                   <h3 className="font-semibold text-gray-900">Global Discount</h3>
-                  <p className="text-sm text-gray-500">Current: <span className="font-medium text-gray-900">{discount?.discount ?? "—"}%</span> off</p>
+                  <p className="text-sm text-gray-500">Current: <span className="font-medium text-gray-900">{discount?.discount ?? "—"}min</span> off</p>
                 </div>
               </div>
               <form onSubmit={handleSaveDiscount} className="flex gap-3">
@@ -127,7 +127,7 @@ export default function PricingPage() {
                     placeholder="0"
                     className="w-full pr-8 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">min</span>
                 </div>
                 <button
                   type="submit"
@@ -147,7 +147,7 @@ export default function PricingPage() {
               <h4 className="text-sm font-semibold text-indigo-900 mb-2">Pricing Summary</h4>
               <div className="space-y-1 text-sm text-indigo-800">
                 <p>Base Rate: <strong>R {rate?.rate ?? 0}/hr</strong></p>
-                <p>Discount: <strong>{discount?.discount ?? 0}%</strong></p>
+                <p>Discount: <strong>{discount?.discount ?? 0}min</strong></p>
                 <p>Effective Rate: <strong>R {rate && discount ? ((rate.rate * (100 - discount.discount)) / 100).toFixed(2) : rate?.rate ?? 0}/hr</strong></p>
               </div>
             </div>
